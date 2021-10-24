@@ -1,0 +1,598 @@
+---
+title: "Data624_HW6"
+author: "Alexis Mekueko"
+date: "10/23/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+
+
+```{r load-packages, results='hide',warning=FALSE, message=FALSE, echo=FALSE}
+
+##library(tidyverse) #loading all library needed for this assignment
+#remove.packages(tidyverse)
+#library(openintro)
+#library(lahman) #database for baseball
+library(caret)
+library(knitr)
+#library(markdown)
+#library(rmarkdown)
+library(dplyr)
+#library(tidyr)
+#library(naniar)
+#library(reshape)
+library(ggplot2)
+#library(qqplotr)
+library(stats)
+library(statsr)
+library(GGally)
+library(pdftools)
+library(correlation)
+
+library(car)
+#library(VIF)
+#library(MASS)
+#library(AICcmodavg)
+#library(gridExtra)
+#library(ggpubr)
+#library(glmulti)
+#install.packages("datarobot", dependencies = TRUE)
+library(datarobot)
+#install.packages("fpp3", dependencies = TRUE)
+library(fpp3)
+#install.packages("fpp2", dependencies = TRUE)
+library(fpp2)
+#install.packages("lubridate", dependencies = TRUE)
+library(lubridate)
+#install.packages("tsibble", dependencies = TRUE)
+library(tsibble)
+library(tsibbledata)
+#install.packages("USgas", dependencies = TRUE)
+#install.packages('Rcpp')
+library(Rcpp)
+#update.packages(Rcpp)
+library(urca)
+library(USgas)
+library(MASS)
+library(forecast)
+set.seed(34332)
+
+```
+
+[Github Link](https://github.com/asmozo24/Data624_HW6)
+[Web Link](https://rpubs.com/amekueko/826409)
+
+## Exercise 1. 
+Figure 9.32 shows the ACFs for 36 random numbers, 360 random numbers and 1,000 random numbers.
+a.  Explain the differences among these figures. Do they all indicate that the data are white noise? Series: x1, There is one significant spike at lag 12. Other Series:x2, Series: x3 don't have significant spike. The bandwidth keeps getting narrow from x1 to x3.Yes, they all indicate that the data are white noise. These figures meet the condition of white noise: A time series is white noise if the variables are independent and identically distributed with a mean of zero. This means that all variables have the same variance (sigma^2) and each value has a zero correlation with all other values in the series. There is no clear pattern on these figures. 
+
+Why are the critical values at different distances from the mean of zero? Why are the autocorrelations different in each figure when they each refer to white noise?
+critical values of ±1.96/√T, T is the length of time series. On these figures, as T get bigger, the bandwidth gets narrow. This explains the critical values at different distances and autocorrelation different in each figure.
+
+## Exercise 2. 
+A classic example of a non-stationary series are stock prices. Plot the daily closing prices for Amazon stock (contained in gafa_stock), along with the ACF and PACF. Explain how each plot shows that the series is non-stationary and should be differenced.
+
+```{r mychunck1mx, echo=FALSE}
+#??gafa_stock
+view(gafa_stock)
+gafa_stock %>%
+  filter(Symbol == "AMZN") %>%
+  gg_tsdisplay(Close, plot_type = "partial")
+
+```
+Plot of the closing price of Amazon stock (2014- 2019) shows there is a trend and changing levels. Thus, this is a non-stationary. On the pacf plot, ACF does not drop quickly to zero, but instead data decreases slowly. If we take a look at the daily closing price of Amazon stock with year of 2014, we see that there is no pattern on price movement, meaning the price fluctuation is bouncing up and down with no prediction. Since it is non-stationary, it should be differenced.
+
+```{r mychunck2, echo=FALSE}
+gafa_stock %>%
+  subset( Date> "2014-01-01" & Date < "2014-12-30") %>%
+  filter(Symbol == "AMZN") %>%
+  gg_tsdisplay(Close, plot_type = "partial")
+
+```
+
+## Exercise 3
+For the following series, find an appropriate Box-Cox transformation and order of differencing in order to obtain stationary data.
+a. Turkish GDP from global_economy.
+
+```{r mychunck3, echo=FALSE}
+#??global_economy
+
+global_economy %>%
+  #subset( Date> "2014-01-01" & Date < "2014-12-30") %>%
+  filter(Country == "Turkey") %>%
+  gg_tsdisplay(GDP, plot_type = "partial")
+
+```
+ACF drops quickly to zero, this means it is a potential to get it to stationary data.
+
+```{r mychunck4, echo=FALSE}
+
+Turkey_GDP <- global_economy %>%
+  #subset( Date> "2014-01-01" & Date < "2014-12-30") %>%
+  filter(Country == "Turkey") 
+lambda1 <- BoxCox.lambda(Turkey_GDP$GDP)
+differenced <- ndiffs(Turkey_GDP$GDP)
+
+Turkey_GDP_T <-  BoxCox(Turkey_GDP$GDP, lambda1)
+
+ggtsdisplay(Turkey_GDP_T)
+
+ggtsdisplay(Turkey_GDP_T %>%
+  diff())
+
+stationary <- Turkey_GDP_T %>%
+  diff() 
+
+ggtsdisplay(stationary %>%
+              diff())
+stationary %>%
+  ur.kpss()%>%
+  summary()
+
+```
+Lambda = 0.1571804
+order of differencing in order  = 2
+Performs the KPSS unit root test, where the Null hypothesis is stationarity. Based on this test, Value of test-statistic is: 0.0889 ...Turkey_GDP is stationary.
+
+b. Accommodation takings in the state of Tasmania from aus_accommodation.
+
+```{r mychunck4s, echo=FALSE}
+aus_accommodation %>%
+  #subset( Date> "2014-01-01" & Date < "2014-12-30") %>%
+  filter(State == "Tasmania") %>%
+  gg_tsdisplay(Takings, plot_type = "partial")
+
+
+```
+ACF has many spikes, time series plot has upwward trend line.
+
+```{r mychunck4dsd, echo=FALSE}
+
+aus_c <- aus_accommodation %>%
+  #subset( Date> "2014-01-01" & Date < "2014-12-30") %>%
+  filter(State == "Tasmania") 
+lambda1 <- BoxCox.lambda(aus_c$Takings)
+differenced <- ndiffs(aus_c$Takings)
+
+aus_c_T <-  BoxCox(aus_c$Takings, lambda1)
+
+ggtsdisplay(aus_c_T)
+
+ggtsdisplay(aus_c_T %>%
+  diff())
+
+stationary <- aus_c_T %>%
+  diff() 
+# since diferenced is 1, we don't need to run it again
+
+stationary %>%
+  ur.kpss()%>%
+  summary()
+
+
+```
+
+Lambda = -0.005076712
+order of differencing in order  = 1
+Based on the KPSS test, Value of test-statistic is: 0.2573 Accommodation takings in the state of Tasmania data is stationary. 
+
+
+
+c. Monthly sales from souvenirs.
+
+```{r mychunck5dsa, echo=FALSE}
+
+#??souvenirs
+souvenirs %>% autoplot(Sales)
+souvenirs %>%
+  #subset( Date> "2014-01-01" & Date < "2014-12-30") %>%
+  #filter(State == "Tasmania") %>%
+  gg_tsdisplay(Sales, plot_type = "partial")
+
+
+```
+The time series of souvenirs looks like moving horizontal with a peak at the end of cycle (this looks like a stationany data). However, these peaks seem to gaining magnitude from year to year. Meaning, we might have a non-stationary data(not 100% sure).
+
+```{r mychunck1d1d, echo=FALSE}
+
+
+lambda1 <- BoxCox.lambda(souvenirs$Sales)
+differenced <- ndiffs(souvenirs$Sale)
+
+souvenirs %>%
+autoplot(BoxCox(Sales, lambda1))
+
+souvenirs_T <-  BoxCox(souvenirs$Sales, lambda1)
+
+stationary <- souvenirs_T %>%
+  diff() 
+# since diferenced is 1, we don't need to run it again
+
+stationary %>%
+  ur.kpss()%>%
+  summary()
+
+```
+
+Lambda =  -0.2444328
+order of differencing in order  = 0
+Based on the KPSS test, Value of test-statistic is: NaN souvenirs data is stationary already. From the boxcox transformation, souvenirs data looks like more like a cyclic progression.
+
+
+## Exercise 5 
+For your retail data (from Exercise 8 in Section 2.10), find the appropriate order of differencing (after transformation if necessary) to obtain stationary data.
+
+```{r mychunck6a, echo=FALSE}
+
+#view(aus_retail)
+#head(aus_retail)
+#??aus_retail
+set.seed(1278)
+myseries <- aus_retail %>%
+  filter(`Series ID` == sample(aus_retail$`Series ID`,1))
+
+myseries %>%
+     autoplot(Turnover)+  
+     labs(y = "Retail turnover in $Million AU", title = "	Australian Retail Trade Turnover")
+
+myseries %>%
+  gg_tsdisplay(Turnover, plot_type = "partial")
+
+
+
+```
+
+
+```{r mychunck6g, echo=FALSE}
+
+lambda1 <- BoxCox.lambda(myseries$Turnover)
+differenced <- ndiffs(myseries$Turnover)
+
+myseries_T <-  BoxCox(myseries$Turnover, lambda1)
+
+ggtsdisplay(myseries_T)
+
+# Applying differenced 1
+ggtsdisplay(myseries_T %>%
+  diff())
+
+stationary <- myseries_T %>%
+  diff() 
+# since diferenced is 1, we don't need to run it again
+
+stationary %>%
+  ur.kpss()%>%
+  summary()
+
+```
+## Exercise 6
+Simulate and plot some data from simple ARIMA models.
+
+a. Use the following R code to generate data from an AR(1) model with ϕ1=0.6 and σ2=1. The process starts with y1=0.
+
+```{r mychunck7a, echo=FALSE}
+
+y <- numeric(100)
+e <- rnorm(100)
+for(i in 2:100)
+  y[i] <- 0.6*y[i-1] + e[i]
+sim <- tsibble(idx = seq_len(100), y = y, index = idx)
+sim %>%
+  autoplot(y) + labs(title = "model with ϕ1=0.6 and σ2=1")
+
+```
+The plot looks stationary
+
+b. Produce a time plot for the series. How does the plot change as you change 
+
+```{r mychunck7ad, echo=FALSE}
+set.seed(12839)
+y <- numeric(100)
+e <- rnorm(100)
+
+for(i in 2:100)
+  y[i] <- 0.01*y[i-1] + e[i]
+sim <- tsibble(idx = seq_len(100), y = y, index = idx)
+
+sim %>%
+  autoplot(y) + labs(title = "model with ϕ1=0.01 and σ2=1")
+
+sim %>%
+  gg_tsdisplay(y, plot_type = "partial")
+
+
+# for (phi in seq(0.01, 0.3, 0.005)) {
+# for(i in 2:100) {
+#   y[i] <- phi*y[i-1] + e[i]
+# sim <- tsibble(idx = seq_len(100), y = y, index = idx)
+# plot <- sim %>%
+#   gg_tsdisplay(y, plot_type = "partial")
+# 
+# }}
+#plot
+
+
+```
+When, we change ϕ1 = 0.001, the plot gets more noise within [-2,2] bandwidth
+
+
+c. Write your own code to generate data from an MA(1) model with θ1=0.6 and σ2=1.
+d. Produce a time plot for the series. How does the plot change as you change θ1?
+
+```{r mychunck1, echo=FALSE}
+set.seed(1239)
+y <- numeric(100)
+e <- rnorm(100)
+
+for(i in 2:100)
+  y[i] <- 0.01*e[i-1] + e[i]
+sim <- tsibble(idx = seq_len(100), y = y, index = idx)
+sim %>%
+  gg_tsdisplay(y, plot_type = "partial")
+
+for(i in 2:100)
+  y[i] <- 0.06*e[i-1] + e[i]
+sim <- tsibble(idx = seq_len(100), y = y, index = idx)
+sim %>%
+  gg_tsdisplay(y, plot_type = "partial")
+
+for(i in 2:100)
+  y[i] <- 0.8*e[i-1] + e[i]
+sim <- tsibble(idx = seq_len(100), y = y, index = idx)
+sim %>%
+  gg_tsdisplay(y, plot_type = "partial")
+
+
+for(i in 2:100)
+  y[i] <- 0.98*e[i-1] + e[i]
+sim <- tsibble(idx = seq_len(100), y = y, index = idx)
+sim %>%
+  gg_tsdisplay(y, plot_type = "partial")
+
+
+
+```
+Not much changes on plots than more noise.
+
+
+e. Generate data from an ARMA(1,1) model with ϕ1=0.6, θ1=0.6 and σ2=1.
+
+f. Generate data from an AR(2) model with ϕ1=−0.8, ϕ2=0.3 and σ2=1. (Note that these parameters will give a non-stationary series.)
+
+```{r mychunck8ds, echo=FALSE}
+set.seed(1239)
+y <- numeric(100)
+e <- rnorm(100)
+
+for(i in 2:100)
+  y[i] <- 0.6*y[i-1] + 0.6*e[i-1] + e[i]
+sim <- tsibble(idx = seq_len(100), y = y, index = idx)
+sim %>%
+  gg_tsdisplay(y, plot_type = "partial")
+
+for(i in 3:100)
+  y[i] <- -0.8*y[i-1] + 0.3*y[i-2] + e[i]
+sim <- tsibble(idx = seq_len(100), y = y, index = idx)
+sim %>%
+  gg_tsdisplay(y, plot_type = "partial")
+
+
+```
+
+
+## Exercise 7 
+Consider aus_airpassengers, the total number of passengers (in millions) from Australian air carriers for the period 1970-2011.
+a. Use ARIMA() to find an appropriate ARIMA model. What model was selected. Check that the residuals look like white noise. Plot forecasts for the next 10 periods.
+
+```{r mychunck9d2s, echo=FALSE}
+
+aus_airpassengers %>%
+  gg_tsdisplay(Passengers, plot_type='partial')
+
+passengers_fit <- aus_airpassengers %>%
+  model(arima = ARIMA(Passengers),
+        #arima210 = ARIMA(Passengers ~ pdq(2,1,0)),
+        #arima013 = ARIMA(Passengers ~ pdq(0,1,3)),
+        stepwise = ARIMA(Passengers),
+        search = ARIMA(Passengers, stepwise=FALSE))
+
+glance(passengers_fit) %>% arrange(AICc) #%>% select(.model:BIC)
+
+```
+
+Of the models fitted, full search has found that stepwise() gives the lowest AICc value.
+
+
+```{r mychunck9dds, echo=FALSE}
+
+# passengers_fit %>%
+#   select(search) %>%
+#   gg_tsresiduals()
+
+augment(passengers_fit) %>%
+  filter(.model=='arima') %>%
+  features(.innov, ljung_box, lag = 10, dof = 3)
+#> # A tibble: 1 x 4
+#>   Country                  .model lb_stat lb_pvalue
+#>   <fct>                    <chr>    <dbl>     <dbl>
+#> 1 Central African Republic search    5.75     0.569
+
+
+```
+
+
+```{r mychunck9dssw, echo=FALSE}
+
+passengers_fit %>%
+  forecast(h=10) %>%
+  filter(.model=='arima') %>%
+  autoplot(aus_airpassengers)
+
+```
+b. Write the model in terms of the backshift operator.
+c. Plot forecasts from an ARIMA(0,1,0) model with drift and compare these to part a.
+d. Plot forecasts from an ARIMA(2,1,2) model with drift and compare these to parts a and c. Remove the constant and see what happens.
+e. Plot forecasts from an ARIMA(0,2,1) model with a constant. What happens?
+```{r mychunck9dsw2, echo=FALSE}
+
+passengers_fit <- aus_airpassengers %>%
+  model(arima = ARIMA(Passengers),
+        arima010 = ARIMA(Passengers ~ pdq(0,1,0)),
+        arima021 = ARIMA(Passengers ~ pdq(0,2,1)),
+        arima212 = ARIMA(Passengers ~ pdq(2,1,2)),
+        stepwise = ARIMA(Passengers),
+        search = ARIMA(Passengers, stepwise=FALSE))
+
+
+passengers_fit %>%
+  forecast(h=10) %>%
+  filter(.model=='arima010') %>%
+  autoplot(aus_airpassengers) + labs(title = "Plot forecasts from an ARIMA(0,1,0) model")
+
+passengers_fit %>%
+  forecast(h=10) %>%
+  filter(.model=='arima212') %>%
+  autoplot(aus_airpassengers) + labs (title = "Plot forecasts from an ARIMA(2,1,2) model")
+
+passengers_fit %>%
+  forecast(h=10) %>%
+  filter(.model=='arima021') %>%
+  autoplot(aus_airpassengers) + labs (title = "Plot forecasts from an ARIMA(0,2,1) model")
+
+glance(passengers_fit) %>% arrange(AICc) #%>% select(.model:BIC)
+
+augment(passengers_fit) %>%
+  filter(.model=='arima010') %>%
+  features(.innov, ljung_box, lag = 10, dof = 3)
+
+augment(passengers_fit) %>%
+  filter(.model=='arima212') %>%
+  features(.innov, ljung_box, lag = 10, dof = 3)
+
+
+```
+Amount all fitted model, the ARIMA(2,1,2) returned a null model. 
+
+## Exercise 8
+For the United States GDP series (from global_economy):
+a. if necessary, find a suitable Box-Cox transformation for the data;
+
+```{r mychunck9hds, echo=FALSE}
+
+
+us_gdp <- global_economy %>%
+  filter(Code == "USA")
+
+us_gdp %>%
+     autoplot(GDP)+  
+     labs(title = "USA GDP")
+
+us_gdp %>%
+  gg_tsdisplay(GDP, plot_type = "partial")
+#find optimal lambda for Box-Cox transformation 
+bc <- boxcox(us_gdp$GDP~us_gdp$Year)
+(lambda1 <- bc$x[which.max(bc$y)]) # 0.3434343
+#differenced <- ndiffs(myseries$Turnover)
+
+us_gdp_T <-  lm((((us_gdp$GDP)^lambda1-1)/lambda1) ~ us_gdp$Year)
+us_gdp_T <-  BoxCox(us_gdp$GDP, lambda1)
+
+ggtsdisplay(us_gdp_T)
+
+```
+The boxcox transformation adjusted the trend line to be more linear (As it was already linear).
+
+b. fit a suitable ARIMA model to the transformed data using ARIMA();
+c. try some other plausible models by experimenting with the orders chosen;
+```{r mychunck10ss, echo=FALSE}
+
+us_gdp_T_fit <- us_gdp %>%
+  model(arima = ARIMA(GDP))
+#Series: GDP 
+#Model: ARIMA(0,2,2) 
+#report(us_gdp_T_fit)
+#glance(us_gdp_T_fit) %>% arrange(AICc) #%>% select(.model:BIC)
+
+# differenced is 2
+# Applying differenced 1
+ggtsdisplay(us_gdp_T %>%
+  diff())
+
+stationary <- myseries_T %>%
+  diff() 
+# since diferenced is 1, we don't need to run it again
+
+stationary %>%
+  ur.kpss()%>%
+  summary()
+
+
+```
+
+d. choose what you think is the best model and check the residual diagnostics;
+e. produce forecasts of your fitted model. Do the forecasts look reasonable?
+f. compare the results with what you would obtain using ETS() (with no transformation).
+
+
+```{r mychunck9ds, echo=FALSE}
+
+us_gdp_fit <- us_gdp %>%
+  model(arima022 = ARIMA(GDP~pdq(0,2,2)),
+        arima222 = ARIMA(GDP ~ pdq(2,2,2)),
+        arima021 = ARIMA(GDP ~ pdq(0,2,1)),
+        arima212 = ARIMA(GDP ~ pdq(0,2,0)),
+        stepwise = ARIMA(GDP),
+        search = ARIMA(GDP, stepwise=FALSE))
+
+glance(us_gdp_fit) %>% arrange(AICc) #%>% select(.model:BIC)
+paste("we choose  ARIMA(2,2,2) model because of the lowest AICc")
+us_gdp_fit1 <- us_gdp %>%
+  model(ARIMA(GDP ~ pdq(2,2,2)))
+us_gdp_fit1 %>% 
+  #filter(.model=='arima222') %>%
+  gg_tsresiduals()
+
+paste("Looks like a normal residual plot")
+
+paste("Forescast of fitted ARIMA(0,2,2) model ...plot below")
+
+us_gdp_fit %>%
+  forecast(h=10) %>%
+  filter(.model=='arima022') %>%
+  autoplot(us_gdp) + labs(title = "U.S. GDP Plot forecasts from an ARIMA(0,2,2) model")
+
+paste("Forescast of fitted ARIMA(2,2,2) model looks reasonable...plot below")
+us_gdp_fit %>%
+  forecast(h=10) %>%
+  filter(.model=='arima222') %>%
+  autoplot(us_gdp) + labs(title = "U.S. GDP Plot forecasts from an ARIMA(2,2,2) model")
+
+paste("Forescast of fitted ARIMA(0,2,1) model....plot below")
+
+us_gdp_fit %>%
+  forecast(h=10) %>%
+  filter(.model=='arima021') %>%
+  autoplot(us_gdp) + labs (title = "U.S. GDP Plot forecasts from an ARIMA(0,2,1) model")
+
+# us_gdp_fit %>%
+#   forecast(h=10) %>%
+#   filter(.model=='arima020') %>%
+#   autoplot(us_gdp) + labs (title = "U.S. GDP Plot forecasts from an ARIMA(0,2,0) model")
+# 
+
+augment(us_gdp_fit) %>%
+  filter(.model=='arima222') %>%
+  features(.innov, ljung_box, lag = 10, dof = 3)
+
+paste("Let's see the results with ETS")
+us_gdp$GDP %>% ets()
+  
+paste("Comparing ETS() and ARIMA() we found that ARIMA offers a better result with lower AICc (3052.273) than ETS() with AICc(3191.941 )")
+```
+
+
