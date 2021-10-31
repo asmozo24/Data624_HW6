@@ -1,0 +1,654 @@
+---
+title: "Data624_Project1"
+author: "Alexis Mekueko"
+date: "10/17/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+
+
+```{r load-packages, results='hide',warning=FALSE, message=FALSE, echo=FALSE}
+
+##library(tidyverse) #loading all library needed for this assignment
+
+
+library(knitr)
+library(dplyr)
+library(tidyr)
+
+library(reshape)
+
+library(stats)
+library(statsr)
+library(GGally)
+library(pdftools)
+library(correlation)
+
+library(lubridate)
+library(fpp3)
+library(urca)
+library(naniar)
+library(xts)
+library(tsibble)
+library(tseries)
+library(tsibbledata)
+library(forecast)
+library(readxl)
+#library(xlsx)
+library(zoo)
+set.seed(34332)
+
+```
+
+
+[Github Link](https://github.com/asmozo24/Data624_Project1)
+<br>
+[Web Link](https://rpubs.com/amekueko/817566)
+
+## This project consists of 3 parts (A,B and C.
+
+## Part A – ATM Forecast, dataset = ATM624Data.xlsx
+
+In part A, I want you to forecast how much cash is taken out of 4 different ATM machines for May 2010. The data is given in a single file. The variable ‘Cash’ is provided in hundreds of dollars, other than that it is straight forward. I am being somewhat ambiguous on purpose to make this have a little more business feeling. Explain and demonstrate your process, techniques used and not used, and your actual forecast. I am giving you data via an excel file, please provide your written report on your findings, visuals, discussion and your R code via an RPubs link along with the actual.rmd file Also please submit the forecast which you will put in an Excel readable file.
+
+## Data Structure
+```{r }
+
+setwd("~/R/Data624_Project1")
+getwd()
+
+#df <- read_excel ("https:///raw.githubusercontent.com/asmozo24/Data624_Project1/main/ATM624Data.xlsx", sheetIndex)
+
+df <- readxl::read_excel("~/R/Data624_Project1/ATM624Data.xlsx", col_names=TRUE, col_types=c('date', 'text', 'numeric'))
+#, col_types=c('date', 'text', 'numeric')
+str(df)
+#view(df)
+
+
+
+```
+
+Data Cleaning
+
+```{r }
+# is there missing a value?
+sum(is.na(df))
+
+
+missing.values <- function(df){
+    df %>%
+    gather(key = "variables", value = "val") %>%
+    mutate(is.missing = is.na(val)) %>%
+    group_by(variables, is.missing) %>%
+    summarise(number.missing = n()) %>%
+    filter(is.missing==T) %>%
+    dplyr::select(-is.missing) %>%
+    arrange(desc(number.missing)) 
+}
+
+#missing.values(insuranceT_df1)%>% kable()
+
+
+# plot missing values
+ missing.values(df) %>%
+   ggplot() +
+     geom_bar(aes(x=variables, y=number.missing), stat = 'identity', col='blue') +
+     labs(x='variables', y="number of missing values", title='Number of missing values') +
+   theme(axis.text.x = element_text(angle = 100, hjust = 0.2))
+
+#vis_miss(training_df)
+gg_miss_var(df, show_pct = TRUE) + labs(y = "Missing Values in % to total record")+ theme()
+#colSums(is.na(df))%>% kable()
+cat("\n The table below shows the total number of missing values per variable")
+apply(is.na(df), 2, sum)
+
+df1 <- drop_na(df)
+#sum(is.na(df1))
+
+```
+## Summary Data
+
+```{r }
+
+df1 %>%
+  group_by(ATM) %>%
+  summarise(n())
+# summary
+summary(df1)
+#class(df1$ATM)
+
+```
+
+Forecast each ATM
+
+```{r }
+#class(df1)
+#is.xts(df1)
+df1$ATM <- as.factor(df1$ATM)
+df1$DATE <- as.Date(df1$DATE, "%Y-%m-%d")
+df1$Cash <- as.numeric(df1$Cash)
+str(df1)
+
+#write.csv(df1,"~/R/Data624_Project1\\ATM.csv", row.names = FALSE)
+
+#df1a <- read.csv("~/R/Data624_Project1/ATM.csv", stringsAsFactors=FALSE) #, col_types=c('date', 'text', 'numeric')
+#view(df2)
+
+# convert to pivot wide
+df1b <- df1 %>%
+  group_by(ATM, DATE) %>%
+  summarise(Cash=sum(Cash)) %>%
+  pivot_wider(id_cols=DATE, names_from=ATM, values_from=Cash)
+
+str(df1b)
+
+```
+
+Let's see what the cash range is for each ATM
+```{r}
+
+# Checking summary
+summary(df1b)
+
+```
+
+We can plot by individual ATM or by cash range if the superposition of all ATM is not readable.
+```{r}
+# Somehow, autoplot does not like my dataframe, so I need to change it into time series..,
+# Time series is not working either...I have tried many options but still getting error with autoplot whereas I used the same format before.
+df1b <- drop_na(df1b)
+sum(is.na(df1b))
+
+#df_ts <- ts(df1a[,-1], start = df1$DATE[1], frequency = 12)
+df_ts <- as_tsibble(df1b)
+#as_tsibble(x, ..., tz = "UTC")
+#as_tsibble(x, ..., tz = "UTC", pivot_longer = TRUE)
+
+#findfrequency(df1b)
+#convert back to pivot long
+df1c <- df_ts %>%
+  pivot_longer(!DATE, names_to = "atm", values_to = "cash")
+
+#Checking class of my data
+class(df1)
+# just curious to see a class of an actual time series data 
+#class(global_economy)
+class(df1c)
+
+df1c %>%
+  autoplot()
+
+```
+
+
+The plot above does not look good, let's try plotting by range. ATM4 has a higher cash range, so we can plot the 03 others
+
+```{r}
+
+ df1c %>%
+   group_by(atm) %>%
+   filter(atm == "ATM1" | atm =="ATM2" ) %>%
+   summarise(number_of_ATM1 = sum(cash)) %>%
+   autoplot(number_of_ATM1) + labs(title = "ATM Cash out from ATM  #1,2 & 3", y = "Cash out of ATM in Hundreds Dollars")
+
+
+```
+As we can see, there are noise and trend line. We have horizontal progression. So, ARIMA method is suitable for forecasting ATM #1 & 2. 
+We need to test few parameters find the appropriate ARIMA.
+
+```{r}
+
+df_ts %>%
+  autoplot(ATM3) + labs(title = "ATM Cash out from ATM #3", y = "Cash out of ATM in Hundreds Dollars")
+
+```
+ATM #3 does not look like having regular activities. This ATM must be in isolate area or customers around this ATM are not clients of the bank who owns ATM #3. There is a sudden peak in ATM #3 as a result of 03 days activities. It is hard to forecasting this ATM3. We think it is best to do simple estimate. Another catch here is that these activities are the last ones recorded. So, maybe the ATM started receiving customers. 
+
+```{r}
+
+df_ts$ATM3
+
+df_ts %>%
+  filter(ATM3 <=100 & ATM3 >= 80 )%>%
+  dplyr:: select(DATE, ATM3) %>%
+  kable()
+
+```
+
+
+```{r}
+
+df_ts %>%
+  autoplot(ATM4)+ labs(title = "ATM Cash out from ATM #4", y = "Cash out of ATM in Hundreds Dollars")
+
+# df_ts %>%
+#   filter(ATM4 >= 5000 )%>%
+#   dplyr:: select(DATE, ATM4)
+#   kable()
+
+```
+ATM #4 activities show no trend line but there is a sudden peak at 2010-02-09 for the cash out amount of	$10919.76. perhaps, this sudden peak might have been a social event nearby such as  National Pizza day. Since there is no trend line and more of horizontal progression, ARIMA seems to be appropriate for ATM 4.
+
+Let's test the stationary data to backup our assumption.
+Performs the KPSS unit root test, where the Null hypothesis is stationary, if p-value greater than 0.05. Then, we confirm stationary data, otherwise, we need to difference. We will start with ATM1 model. 
+
+```{r}
+# A stationary time series is one whose statistical properties such as mean, variance, autocorrelation, etc. are all constant over time.
+# a time series is said weakly stationary if 
+# 
+# -  its mean is constant
+# 
+# -  its standard deviation is constant 
+# 
+# -  its cross covariance does not depend on time but depends only on the lag between the two series concerned. 
+
+df_ts %>%
+  autoplot(ATM1) + labs(title = "ATM Cash out from ATM #1", y = "Cash out of ATM in Hundreds Dollars")
+
+
+df1c %>%
+  subset( DATE> "2009-05-01" & DATE < "2009-05-30") %>%
+  filter(atm == "ATM1") %>%
+  gg_tsdisplay(cash, plot_type = "partial") 
+
+#Dickey-Fuller test using adf.test function of tseries package
+#a p-value > 0.05, we conclude that there is no enough evidence to reject the Null hypothesis, meaning that the time series data is nonstationary.
+#+ geom_line(aes(x = DATE, y = ATM1), colour = "red") + geom_segment(aes (x = 1, y = 96, xend = 365, yend = 180 ))
+
+```
+We zoom in within May 2009 to see the ATM #1 activities. We can see nearly constant mean, variance and autocorrelation (acf).
+
+
+Let's us perform 	Augmented Dickey-Fuller Test
+
+Conditions to Reject Null Hypothesis(HO)
+Since the null hypothesis assumes the presence of unit root, that is α=1, the p-value obtained should be less than the significance level (say 0.05) in order to reject the null hypothesis. Thereby, inferring that the series is stationary.
+```{r}
+adf.test(df_ts$ATM1)
+#sum(is.na(df_ts$ATM1))
+
+```
+
+
+The p-value (0.01) is very less than the significance level of 0.05 and hence we can reject the null hypothesis and take that the time series (ATM1) is stationary.
+
+Let's try another test Kwiatkowski-Phillips-Schmidt-Shin (KPSS) Test
+Null Hypothesis (HO): Series is trend stationary or series has no unit root.
+Alternate Hypothesis(HA): Series is non-stationary or series has a unit root.
+Conditions to Fail to Reject Null Hypothesis(HO)
+If Test statistic < Critical Value and p-value < 0.05 – Fail to Reject Null Hypothesis(HO) i.e., time series does not have a unit root, meaning it is trend stationary
+```{r}
+
+df_ts %>%
+  features(ATM1, unitroot_kpss)
+#kpss.test(df_ts$ATM1)
+
+```
+
+Again, with p-value < 0.05 , we fail to reject null hypothesis. Thus, ATM1 is trend stationary.
+
+Let's do some forecasting with ARIMA technique.
+
+```{r}
+
+#fit_atm1 <- df_ts %>%
+#  model(ARIMA(ATM1))
+
+fit_atm1 <- df1c %>%
+  tsibble::fill_gaps(DATE) %>% # We are filling gap because of error: .data contains implicit gaps in time. You should check your data and convert implicit gaps into explicit missing values using `tsibble::fill_gaps()` if required. We could use mutate(),  mutate(YearMonth = yearmonth(as.character(YearMonth))) %>%
+   #group_by(atm) %>%
+   filter(atm == "ATM1") %>%
+   model(ARIMA(cash))
+   #summarise(number_of_ATM1 = sum(cash)) %>%
+   #autoplot(cash) + labs(title = "ATM Cash out from ATM  #1,2 & 3", y = "Cash out of ATM in Hundreds Dollars")
+report(fit_atm1)
+
+
+```
+
+
+Above ARIMA model (ARIMA(2,0,0)(2,1,0)) was automatically selected
+
+```{r}
+
+df1c %>%
+  subset( DATE> "2010-04-01" & DATE < "2010-04-30") %>%
+  filter(atm == "ATM1") %>%
+  autoplot(cash) + labs(title = "ATM Cash out from ATM #1", y = "Cash out of ATM in Hundreds Dollars")
+
+#df_ts %>%
+#  autoplot(ATM1) + labs(title = "ATM Cash out from ATM #1", y = "Cash out of ATM in Hundreds Dollars")
+  
+#view(fit_atm1)
+ds <-fit_atm1 %>%
+  #subset( df1c$DATE> "2010-04-01" & df1cDATE < "2010-04-30") %>%
+  #filter(.model == "ARIMA(2,0,0)")
+  forecast(h=30) %>%
+  autoplot(df1c) + labs(title = "ATM Cash out from ATM #1", y = "Cash out of ATM in Hundreds Dollars")
+ds
+
+```
+
+Let's Forecast ATM2 model. Since ATM1 & 2 show the same stationary data. we will use the same technique used with ATM1
+
+```{r}
+df1c %>%
+  subset( DATE> "2009-05-01" & DATE < "2009-05-30") %>%
+  filter(atm == "ATM2") %>%
+  gg_tsdisplay(cash, plot_type = "partial") 
+
+adf.test(df_ts$ATM2)
+
+fit_atm2 <- df1c %>%
+  tsibble::fill_gaps(DATE) %>% # We are filling gap because of error: .data contains implicit gaps in time. You should check your data and convert implicit gaps into explicit missing values using `tsibble::fill_gaps()` if required. We could use mutate(),  mutate(YearMonth = yearmonth(as.character(YearMonth))) %>%
+   #group_by(atm) %>%
+   filter(atm == "ATM2") %>%
+   model(ARIMA(cash))
+   #summarise(number_of_ATM1 = sum(cash)) %>%
+   #autoplot(cash) + labs(title = "ATM Cash out from ATM  #1,2 & 3", y = "Cash out of ATM in Hundreds Dollars")
+report(fit_atm2)
+
+ds <-fit_atm2 %>%
+  #subset( df1c$DATE> "2010-04-01" & df1cDATE < "2010-04-30") %>%
+  #filter(.model == "ARIMA(2,0,0)")
+  forecast(h=30) %>%
+  autoplot(df1c) + labs(title = "ATM Cash out from ATM #2", y = "Cash out of ATM in Hundreds Dollars")
+
+```
+
+As we expected, the forecasting of ATM2 model gives the same result as the forecast of ATM1. 
+
+Forecasting ATM3 model.
+We mentioned above that ATM3 does have enough data due to the lack of activity recorded. Therefore, we anticipate that this will likely continue as the way it is. Despite, the sudden peaks recorded around the last 03 days of April 2010 there is not enough data to perform forecast. However, we will run run ARIMA technique to confirm our prediction.
+```{r}
+
+
+
+df_ts %>%
+  filter(ATM3 <=100 & ATM3 >= 80 )%>%
+  #subset( DATE> "2009-05-01" & DATE < "2009-05-30") %>%
+  #filter(atm == "ATM2") %>%
+  gg_tsdisplay(ATM3, plot_type = "partial") 
+
+#adf.test(df_ts$ATM3)
+
+fit_atm3 <- df1c %>%
+  subset( DATE> "2010-04-28" & DATE < "2010-04-30") %>%
+  #tsibble::fill_gaps(DATE) %>% # We are filling gap because of error: .data contains implicit gaps in time. You should check your data and convert implicit gaps into explicit missing values using `tsibble::fill_gaps()` if required. We could use mutate(),  mutate(YearMonth = yearmonth(as.character(YearMonth))) %>%
+   #group_by(atm) %>%
+   filter(atm == "ATM3") %>%
+   model(ARIMA(cash))
+   #summarise(number_of_ATM1 = sum(cash)) %>%
+   #autoplot(cash) + labs(title = "ATM Cash out from ATM  #1,2 & 3", y = "Cash out of ATM in Hundreds Dollars")
+#report(fit_atm3)
+
+ds1 <-fit_atm3 %>%
+  #subset( df1c$DATE> "2010-04-01" & df1cDATE < "2010-04-30") %>%
+  #filter(.model == "ARIMA(2,0,0)")
+  forecast(h=30) %>%
+  autoplot(df1c) + labs(title = "Forecast of ATM Cash out from ATM #3", y = "Cash out of ATM in Hundreds Dollars")
+
+ds1
+
+# not enough data
+# df_ts %>%
+#   filter(ATM3 <=100 & ATM3 >= 80 )%>%
+#   model(ETS(ATM3))%>%
+#   forecast(h=30) %>%
+#   autoplot(df_ts %>% filter(DATE >= "2010-04-28"))
+
+```
+As predicted, ATM3 model forecast does not have enough data to show a future cash out of ATM 3. We suggest to continue supplying the ATM #3 with the same amount or close it or relocate it to a location where marketing study shows potential activities.
+
+
+Forecasting ATM4 model
+Comparing ATM #4 and the 03 other ATM(1,2,3), ATM #3 has higher activities with the highest peak. This can be treated as as an outlier since there is no real explanation other than extrapolation. We can exclude this outlier or applying directly ARIMA technique with the assumption that the adf test will agree with chosen forecast technique.
+
+
+```{r}
+
+forecasts <- function(x){
+# x %>%
+#   subset( DATE> "2009-05-01" & DATE < "2009-05-30") %>%
+#   filter(atm == "ATM4") %>%
+#   gg_tsdisplay(cash, plot_type = "partial") 
+# 
+
+adf.test(df_ts$ATM4)
+
+fit_atm4 <- x %>%
+  tsibble::fill_gaps(DATE) %>% # We are filling gap because of error: .data contains implicit gaps in time. You should check your data and convert implicit gaps into explicit missing values using `tsibble::fill_gaps()` if required. We could use mutate(),  mutate(YearMonth = yearmonth(as.character(YearMonth))) %>%
+   #group_by(atm) %>%
+   filter(atm == "ATM4") %>%
+   model(ARIMA(cash))
+   #summarise(number_of_ATM1 = sum(cash)) %>%
+   #autoplot(cash) + labs(title = "ATM Cash out from ATM  #1,2 & 3", y = "Cash out of ATM in Hundreds Dollars")
+report(fit_atm4)
+
+ds2 <-fit_atm4 %>%
+  #subset( df1c$DATE> "2010-04-01" & df1cDATE < "2010-04-30") %>%
+  #filter(.model == "ARIMA(2,0,0)")
+  forecast(h=30) %>%
+  autoplot(x) + labs(title = "Forecast of ATM Cash out from ATM #4", y = "Cash out of ATM in Hundreds Dollars")
+ds2
+}
+
+forecasts(df1c)
+#df1co <- df1c[!df1c$cash == 10919.76  , ]
+#subset(df1c, cash==10919.76)
+#df1co <- df1c[df1c$cash != "2010-02-09", ]
+#max(df1co$cash)
+#forecasts(df1co)
+#tsoutliers(df1c$cash)
+#max(df1c$cash)
+
+```
+
+
+
+## Part B – Forecasting Power, ResidentialCustomerForecastLoad-624.xlsx
+
+Part B consists of a simple dataset of residential power usage for January 1998 until December 2013.  Your assignment is to model these data and a monthly forecast for 2014.  The data is given in a single file.  The variable ‘KWH’ is power consumption in Kilowatt hours, the rest is straight forward. Add this to your existing files above. 
+
+
+## Data Structure
+```{r }
+
+#setwd("~/R/Data624_Project1")
+#getwd()
+
+dfb <- readxl::read_excel("~/R/Data624_Project1/ResidentialCustomerForecastLoad-624.xlsx", col_names=TRUE)
+#, col_types=c('date', 'text', 'numeric')
+# 
+# dfbb <- dfb %>%
+#   rename(caseSeq = CaseSequence, 
+#          yearMonth = YYYY-MMM,
+#          load = KWH )
+#view(dfb)
+colnames(dfb) <- c("caseSeq", "yearMonth", "load")
+# not working probably because  date is in a character format .....dfb$yearMonth <- as.Date(as.yearmon(dfb$yearMonth))
+#sum(is.na(dfb))
+dfb <- drop_na(dfb)
+
+dfbb <- dfb %>%
+  mutate(yearMonth = yearmonth(as.character(yearMonth))) %>%
+  as_tsibble(index = yearMonth)
+
+#sum(is.na(dfbb))
+
+#write.csv(dfbb,"~/R/Data624_Project1\\ResidentialCustomerLoad.csv", row.names = FALSE)
+
+#class(dfbb)
+#str(dfbb)
+#view(df)
+dfbb %>%
+  #subset( DATE> "2010-04-01" & DATE < "2010-04-30") %>%
+  #filter(atm == "ATM1") %>%
+  autoplot(load) + labs(title = "Residential Power Usage for January 1998 until December 2013", y = "Caonsumption in Kilowatt hours")
+
+```
+This residential power consumption has am upward trend line. There is an outlier around Jul 2010 that will need to be removed or replaced by a median value of that year.
+
+
+```{r }
+#tsoutliers(dfbb$load)
+min(dfbb$load)
+#view(dfbb) #883 2010 Jul 770523
+which(dfbb$load == 770523) # row index 150, has the outlier
+
+# dfb %>%
+#   group_by(yearMonth) %>%
+#     filter( yearMonth > "2009 Dec" & yearMonth < "2010 Dec") %>%
+#     median(load) 
+paste("The median value in year 2010 is : ", median(dfb[144:155,]$load)) #6424438
+dfb[150,]$load <- 6424438
+
+dfbb <- dfb %>%
+  mutate(yearMonth = yearmonth(as.character(yearMonth))) %>%
+  as_tsibble(index = yearMonth)
+
+dfbb %>%
+  #subset( DATE> "2010-04-01" & DATE < "2010-04-30") %>%
+  #filter(atm == "ATM1") %>%
+  autoplot(load)+ geom_line(aes(x = yearMonth, y = load))+ geom_segment(aes (x = '1998 Jan', y = 6862583, xend = '2008 Jul', yend = 7643987 )) + labs(title = "Residential Power Usage for January 1998 until December 2013", y = "Consumption in Kilowatt hours")
+#geom_line(aes(x = yearMonth, y = load))+ geom_segment(aes (x = '1998 Jan', y = 6862583, xend = '2008 Jul', yend = 7643987 ))
+#abline(reg = lm(dfbb$load~dfbb$yearMonth), col = "red")
+
+```
+The new plot (above) does not carry any sudden peak (outliers).To forecast,we will apply the exponential smoothing technique. We also observed some seasonality (additive/multiplicative)
+
+```{r }
+
+dfbb$load <- log(dfbb$load)
+
+dfs <- dfbb %>%
+  tsibble::fill_gaps(yearMonth) %>%
+  dplyr::select(yearMonth, load)
+
+dfs[129,]$load <- 1.017508
+
+#view(dfs)
+
+#sum(is.na(dfbb))
+
+fit <- dfs %>%
+  model(
+    additive = ETS(load ~ error("A") + trend("A") +
+                                                season("A")),
+    multiplicative = ETS(load ~ error("M") + trend("A") +
+                                                season("M"))
+  )
+
+
+dfs %>%
+  stretch_tsibble(.init = 10) %>%
+  model(
+additive = ETS(load ~ error("A") + trend("A") +
+                                                season("A")),
+    multiplicative = ETS(load ~ error("M") + trend("A") +
+                                                season("M"))
+  ) %>%
+  forecast(h = 12) %>%
+  accuracy(dfs)
+
+
+
+fc <- fit %>% forecast(h = 12)
+fc %>%
+  autoplot(dfs, level = NULL) +
+  labs(title="Forecast of Residential Power Usage for January 1998 until December 2013",
+       y="Consumption in Kilowatt hours") +  guides(colour = guide_legend(title = "Forecast"))
+
+
+fit1 <- dfs %>%
+  model(
+    additive = ETS(load ~ error("A") + trend("A") +
+                                                season("A"))
+   # multiplicative = ETS(load ~ error("M") + trend("A") +season("M"))
+  )
+
+fc1 <- fit1 %>% forecast(h = 12)
+
+df_forecast <- fc1 %>%
+  autoplot(dfs, level = NULL) +
+  labs(title="Forecast of Residential Power Usage for January 1998 until December 2013",
+       y="Consumption in Kilowatt hours") +  guides(colour = guide_legend(title = "Forecast"))
+df_forecast
+df_forecast1 <- print(df_forecast)
+#write.csv(df_forecast1,"~/R/Data624_Project1\\ResidentialPowerForecast.csv", row.names = FALSE)
+
+
+```
+
+We think exponential smoothing with additive flavor is a good fit to forecast the consumers power consumption. The accuracy report shows a better RMSE of the additive trend.  
+
+
+Part C – BONUS, optional (part or all), Waterflow_Pipe1.xlsx and Waterflow_Pipe2.xlsx
+
+ 
+
+Part C consists of two data sets.  These are simple 2 columns sets, however they have different time stamps.  Your optional assignment is to time-base sequence the data and aggregate based on hour (example of what this looks like, follows).  Note for multiple recordings within an hour, take the mean.  Then to determine if the data is stationary and can it be forecast.  If so, provide a week forward forecast and present results via Rpubs and .rmd and the forecast in an Excel readable file.   
+
+
+```{r }
+
+#setwd("~/R/Data624_Project1")
+#getwd()
+
+waterP1 <- readxl::read_excel("~/R/Data624_Project1/Waterflow_Pipe1 (1).xlsx", col_names=TRUE)
+waterP2 <- readxl::read_excel("~/R/Data624_Project1/Waterflow_Pipe2 (1).xlsx", col_names=TRUE)
+#, col_types=c('date', 'text', 'numeric')
+# 
+# dfbb <- dfb %>%
+#   rename(caseSeq = CaseSequence, 
+#          yearMonth = YYYY-MMM,
+#          load = KWH )
+#view(waterP2)
+colnames(waterP1) <- c("time", "WaterFlow")
+colnames(waterP2) <- c("time", "WaterFlow")
+
+# not working probably because  date is in a character format .....dfb$yearMonth <- as.Date(as.yearmon(dfb$yearMonth))
+#sum(is.na(waterP2))
+#dfb <- drop_na(waterP1)
+str(waterP1)
+# dfbb <- dfb %>%
+#   mutate(yearMonth = yearmonth(as.character(yearMonth))) %>%
+#   as_tsibble(index = yearMonth)
+# 
+# #sum(is.na(dfbb))
+# 
+# #write.csv(dfbb,"~/R/Data624_Project1\\ResidentialCustomerLoad.csv", row.names = FALSE)
+# 
+# #class(dfbb)
+# #str(dfbb)
+# #view(df)
+# dfbb %>%
+#   #subset( DATE> "2010-04-01" & DATE < "2010-04-30") %>%
+#   #filter(atm == "ATM1") %>%
+#   autoplot(load) + labs(title = "Residential Power Usage for January 1998 until December 2013", y = "Caonsumption in Kilowatt hours")
+
+
+```
+
+
+
+
+```{r }
+
+
+```
+
+
+
+```{r }
+
+
+```
+
+https://www.analyticsvidhya.com/blog/2021/06/statistical-tests-to-check-stationarity-in-time-series-part-1/
+https://otexts.com/fpp3/stationarity.html
